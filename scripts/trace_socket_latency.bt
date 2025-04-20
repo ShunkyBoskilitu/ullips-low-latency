@@ -1,0 +1,29 @@
+#!/usr/bin/env bpftrace
+/* trace_socket_latency.bt: Trace ingress packet latency from netif_receive_skb to socket read */
+
+BEGIN {
+    printf("Tracing ingress network packet latency (Ctrl-C to stop)...\n");
+}
+
+kprobe:netif_receive_skb {
+    @start[tid] = nsecs;
+}
+
+kretprobe:netif_receive_skb /@start[tid]/ {
+    @netif_duration_us = hist((nsecs - @start[tid]) / 1000);
+    delete(@start[tid]);
+}
+
+tracepoint:syscalls:sys_enter_recvfrom {
+    @recv_start[tid] = nsecs;
+}
+
+tracepoint:syscalls:sys_exit_recvfrom /@recv_start[tid]/ {
+    @socket_read_us = hist((nsecs - @recv_start[tid]) / 1000);
+    delete(@recv_start[tid]);
+}
+
+END {
+    clear(@start);
+    clear(@recv_start);
+}
